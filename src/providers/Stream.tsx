@@ -24,6 +24,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { getApiKey } from "@/lib/api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
+import { AIMessage } from "@langchain/core/messages";
 
 export type StateType = { messages: Message[]; ui?: UIMessage[] };
 
@@ -79,17 +80,35 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
+  const [liveMessage, setLiveMessage] = useState("");
+  const [committedMessages, setCommittedMessages] = useState<Message[]>([]);
   const streamValue = useTypedStream({
     apiUrl,
     apiKey: apiKey ?? undefined,
     assistantId,
     threadId: threadId ?? null,
+
     onCustomEvent: (event, options) => {
       if (isUIMessage(event) || isRemoveUIMessage(event)) {
+        console.log("UI message received:", event);
         options.mutate((prev) => {
           const ui = uiMessageReducer(prev.ui ?? [], event);
           return { ...prev, ui };
         });
+      }
+    },
+    /* … your config … */
+    onUpdateEvent: (update) => {
+      console.log("🔄 state-update from server:", update);
+      setLiveMessage("");
+    },
+
+    // 3) tap into the token events here:
+    onLangChainEvent: ({ event, data }) => {
+      console.log("LangChain event received:", event, data);
+      if (event === "on_chat_model_stream") {
+        // append each incoming chunk
+        setLiveMessage((prev) => prev + data.chunk.content);
       }
     },
     onThreadId: (id) => {
@@ -117,9 +136,15 @@ const StreamSession = ({
       }
     });
   }, [apiKey, apiUrl]);
-
   return (
-    <StreamContext.Provider value={streamValue}>
+    <StreamContext.Provider
+      value={{
+        ...streamValue,
+        messages: streamValue.isLoading
+          ? streamValue.messages.concat([new AIMessage(liveMessage)])
+          : streamValue.messages,
+      }}
+    >
       {children}
     </StreamContext.Provider>
   );
