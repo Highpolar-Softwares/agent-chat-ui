@@ -187,6 +187,12 @@ const StreamSession = ({
             return prevMessages;
           });
         }
+      } else if (
+        event === "on_chain_start" ||
+        event === "on_tool_start" ||
+        event === "on_chat_model_start"
+      ) {
+        // Handle chain start event
       }
     },
     onThreadId: (id) => {

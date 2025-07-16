@@ -220,7 +220,7 @@ export function Thread() {
         streamMode: ["messages"],
 
         config: {
-          recursion_limit: 100,
+          recursion_limit: 1000,
         },
         optimisticValues: (prev) => ({
           ...prev,
