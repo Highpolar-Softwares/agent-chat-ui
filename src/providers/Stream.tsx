@@ -223,6 +223,32 @@ const StreamSession = ({
   useEffect(() => {
     console.log("StreamProvider values:", streamValue);
 
+    // Check for messages in streamValue.messages that are not in our local messages state
+    if (streamValue.messages && Array.isArray(streamValue.messages)) {
+      const streamMessages = streamValue.messages;
+
+      setMessages((prevMessages) => {
+        // Get existing message IDs from our local state
+        const existingIds = new Set(prevMessages.map((msg) => msg.id));
+
+        // Find messages from streamValue that are not in our local state
+        const newMessagesFromStream = streamMessages.filter(
+          (msg: any) => msg.id && !existingIds.has(msg.id),
+        );
+
+        // Only update if we have new messages to add
+        if (newMessagesFromStream.length > 0) {
+          console.log(
+            "Adding new messages from streamValue:",
+            newMessagesFromStream,
+          );
+          return [...prevMessages, ...newMessagesFromStream];
+        }
+
+        return prevMessages;
+      });
+    }
+
     return () => {};
   }, [streamValue]);
 
