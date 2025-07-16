@@ -101,11 +101,6 @@ const StreamSession = ({
     onUpdateEvent: (update) => {
       console.log("🔄 state-update from server:", update);
       setLiveMessage("");
-      if (update["supervisor"].messages) {
-        console.log(typeof update["supervisor"].messages);
-        console.log(Object.keys(update["supervisor"].messages));
-        //setMessages([...update["supervisor"].messages]);
-      }
     },
 
     // 3) tap into the token events here:
