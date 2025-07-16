@@ -81,7 +81,7 @@ const StreamSession = ({
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
   const [liveMessage, setLiveMessage] = useState("");
-  const [committedMessages, setCommittedMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const streamValue = useTypedStream({
     apiUrl,
     apiKey: apiKey ?? undefined,
@@ -101,18 +101,102 @@ const StreamSession = ({
     onUpdateEvent: (update) => {
       console.log("🔄 state-update from server:", update);
       setLiveMessage("");
+      if (update["supervisor"].messages) {
+        console.log(typeof update["supervisor"].messages);
+        console.log(Object.keys(update["supervisor"].messages));
+        //setMessages([...update["supervisor"].messages]);
+      }
     },
 
     // 3) tap into the token events here:
     onLangChainEvent: ({ event, data }) => {
       console.log("LangChain event received:", event, data);
-      if (event === "on_chat_model_stream") {
-        // append each incoming chunk
-        setLiveMessage((prev) => prev + data.chunk.content);
+
+      if (event === "on_chain_stream" || event === "on_chat_model_stream") {
+        // Handle chain stream events if needed
+        const dataWithChunk = data as any;
+        if (dataWithChunk?.chunk && dataWithChunk.chunk.id) {
+          const chunkId = dataWithChunk.chunk.id;
+          const chunkContent = dataWithChunk.chunk.content;
+
+          // Only process if we have valid content
+          if (
+            chunkContent !== undefined &&
+            chunkContent !== null &&
+            chunkContent !== ""
+          ) {
+            setMessages((prevMessages) => {
+              const existingMessageIndex = prevMessages.findIndex(
+                (msg) => msg.id === chunkId,
+              );
+
+              if (existingMessageIndex !== -1) {
+                // Message exists, append content
+                const updatedMessages = [...prevMessages];
+                const existingMessage = updatedMessages[existingMessageIndex];
+
+                if (typeof chunkContent === "string") {
+                  updatedMessages[existingMessageIndex] = {
+                    ...existingMessage,
+                    content: (existingMessage.content || "") + chunkContent,
+                  };
+                } else if (Array.isArray(chunkContent)) {
+                  updatedMessages[existingMessageIndex] = {
+                    ...existingMessage,
+                    content: Array.isArray(existingMessage.content)
+                      ? [...existingMessage.content, ...chunkContent]
+                      : [existingMessage.content, ...chunkContent],
+                  };
+                }
+
+                return updatedMessages;
+              } else {
+                // Message doesn't exist, add as new message
+                return [
+                  ...prevMessages,
+                  {
+                    id: chunkId,
+                    content: chunkContent,
+                    ...dataWithChunk.chunk,
+                  },
+                ];
+              }
+            });
+          }
+        }
+      } else if (
+        event === "on_chain_end" ||
+        event === "on_tool_end" ||
+        event === "on_chat_model_end"
+      ) {
+        // Handle chain end event
+        const dataWithOutput = data as any;
+        if (
+          dataWithOutput?.output?.messages &&
+          Array.isArray(dataWithOutput.output.messages)
+        ) {
+          const newMessages = dataWithOutput.output.messages;
+
+          setMessages((prevMessages) => {
+            // Use prevMessages instead of stale messages state
+            const existingIds = new Set(prevMessages.map((msg) => msg.id));
+            const uniqueNewMessages = newMessages.filter(
+              (msg: any) => msg.id && !existingIds.has(msg.id),
+            );
+
+            // Only add messages if we have new unique ones
+            if (uniqueNewMessages.length > 0) {
+              return [...prevMessages, ...uniqueNewMessages];
+            }
+
+            return prevMessages;
+          });
+        }
       }
     },
     onThreadId: (id) => {
       setThreadId(id);
+      setLiveMessage("");
       // Refetch threads list when thread ID changes.
       // Wait for some seconds before fetching so we're able to get the new thread that was created.
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
@@ -136,13 +220,25 @@ const StreamSession = ({
       }
     });
   }, [apiKey, apiUrl]);
+  useEffect(() => {
+    console.log("StreamProvider values:", streamValue);
+
+    return () => {};
+  }, [streamValue]);
+
+  useEffect(() => {
+    console.log("---------MESSAGES UPDATED------------", messages);
+
+    return () => {};
+  }, [messages]);
   return (
     <StreamContext.Provider
       value={{
         ...streamValue,
-        messages: streamValue.isLoading
-          ? streamValue.messages.concat([new AIMessage(liveMessage)])
-          : streamValue.messages,
+        messages: messages,
+        // messages: streamValue.isLoading
+        //   ? streamValue.messages.concat([new AIMessage(liveMessage)])
+        //   : streamValue.messages,
       }}
     >
       {children}
